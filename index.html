@@ -1,0 +1,1173 @@
+<html lang="ja">
+<head>
+    <meta charset="UTF-8"></meta>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"></meta>
+    <title>AI五目並べ - Stylish Modern</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Bloggerなどの外部サイトでスタイルが競合しないように詳細度を上げる設定
+        tailwind.config = {
+            important: true,
+        }
+    </script>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com" rel="preconnect"></link>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"></link>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&amp;family=Inter:wght@400;500;700&amp;display=swap" rel="stylesheet"></link>
+
+    <!-- スタイル設定 -->
+    <style>
+        /* ベースフォント設定（全体には適用せず、ラッパーで制御） */
+        .app-wrapper {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+
+        /* 碁盤のスタイル - モダンな木材色 */
+        .board-bg {
+            background-color: #E8D0A9;
+            background-image: linear-gradient(to bottom right, #E8D0A9, #DEB887);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* 15路盤用のグリッド設定 */
+        .grid-15 {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            grid-template-rows: repeat(15, 1fr);
+        }
+        
+        /* 碁石のスタイル */
+        .stone {
+            width: 88%;
+            height: 88%;
+            border-radius: 50%;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            z-index: 20;
+        }
+        /* 黒石 - 深いマットブラック */
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #4a4a4a, #1a1a1a 60%, #000 100%);
+            box-shadow: 2px 4px 6px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,255,255,0.1);
+        }
+        /* 白石 - 陶器のようなホワイト */
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #ffffff, #f0f0f0 60%, #d4d4d8 100%);
+            box-shadow: 2px 4px 6px rgba(0,0,0,0.2), inset 0 -2px 4px rgba(0,0,0,0.05);
+        }
+        
+        /* 最新の手 */
+        .stone.last-move::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30%;
+            height: 30%;
+            background-color: #ef4444; /* red-500 */
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+        }
+
+        /* グリッド線 */
+        .grid-cell {
+            position: relative;
+        }
+        .grid-cell::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background-color: #52525b; /* zinc-600 */
+            opacity: 0.8;
+            z-index: 0;
+        }
+        .grid-cell::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            height: 100%;
+            width: 1px;
+            background-color: #52525b; /* zinc-600 */
+            opacity: 0.8;
+            z-index: 0;
+        }
+        
+        /* 星（ドット） */
+        .star-point {
+            z-index: 1;
+        }
+        .star-point::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16%;
+            height: 16%;
+            max-width: 5px;
+            max-height: 5px;
+            background-color: #3f3f46; /* zinc-700 */
+            border-radius: 50%;
+        }
+
+        /* リンクのスタイル（クラス指定に変更してグローバル汚染を防止） */
+        .custom-link {
+            color: #d97706; /* amber-600 */
+            font-weight: 500;
+            transition: 0.2s;
+            text-decoration: underline;
+            text-decoration-color: rgba(217, 119, 6, 0.3);
+        }
+        .custom-link:hover {
+            color: #b45309; /* amber-700 */
+            text-decoration-color: rgba(180, 83, 9, 1);
+        }
+        
+        /* 思考中のアニメーション */
+        .thinking-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+            display: inline-block;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+        .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+       /*通常時の見た目*/
+        a{
+          color:Orange;　
+          font-weight:bold;
+          transition:0.3s;/*ふわっといろを変えるアニメーション*/  
+        }
+        /*マウスが乗ったときの見た目(hover)*/
+       a:hover{
+            color:Green; /*マウスが乗るとグリーンとなる*/
+            text-decoration:none;/*下線を消す*/
+      }
+    </style>
+</head>
+<body class="m-0 p-0">
+
+<!-- 全体を包むラッパー (Blogger等の親スタイルを遮断するために明示的にスタイルを指定) -->
+<div class="relative min-h-screen bg-zinc-100 text-zinc-800 font-sans py-8 app-wrapper flex flex-col items-center">
+
+    <!-- 記事の説明セクション（カード化して背景色を確保） -->
+    <div class="w-full max-w-5xl px-4 mb-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-zinc-200 p-6 flex flex-col md:flex-row gap-6 items-start relative">
+            <div class="flex-1">
+                <h3 class="font-bold text-xl mb-2 text-zinc-800 flex items-center gap-2">
+                    <span data-t="aboutTitle">このツールについて</span>
+                </h3>
+                <p class="text-zinc-600 text-sm leading-relaxed mb-3">
+                    <span data-t="aboutDesc">AIへのプロンプト生成機能と <strong>CPU対戦機能</strong>を搭載したWebアプリです<br />
+                    デザインを一新し より対局に集中できるモダンなインターフェースになりました</span><br />                    
+                </p>
+              　 <div class="flex gap-2 flex-wrap text-xs font-medium text-zinc-500">
+                    <span class="px-2 py-1 border border-zinc-300 rounded-md" data-t="levelEasyTag">初級: 気まぐれ</span>
+                    <span class="px-2 py-1 border border-zinc-300 rounded-md" data-t="levelNormalTag">中級: リーチ阻止</span>
+                    <span class="px-2 py-1 border border-zinc-300 rounded-md" data-t="levelHardTag">上級: 攻防バランス</span>
+                </div>
+            </div>
+            <!-- 言語切り替え (PC) -->
+            <div class="absolute top-6 right-6 flex items-center gap-2">
+                <button class="text-xs font-medium text-zinc-400 hover:text-zinc-600 px-2 py-1 rounded transition-colors" id="langJaBtn">日本語</button>
+                <span class="text-zinc-300">|</span>
+                <button class="text-xs font-medium text-zinc-400 hover:text-zinc-600 px-2 py-1 rounded transition-colors" id="langEnBtn">English</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- アプリケーション本体（ここにはリッチなスタイルを適用） -->
+    <div class="w-full max-w-6xl bg-white border border-zinc-200 rounded-3xl shadow-xl overflow-hidden flex flex-col md:flex-row" id="gomoku-app">
+
+        <!-- メインエリア：盤面 -->
+        <main class="flex-1 bg-zinc-50 p-4 md:p-8 flex flex-col items-center relative">
+            
+            <!-- ヘッダー (モバイル用) -->
+            <div class="md:hidden w-full flex justify-between items-center mb-6">
+                <h1 class="font-bold text-zinc-800">Gomoku AI</h1>
+                <div class="flex gap-2">
+                    <button class="text-xs bg-white border border-zinc-300 text-zinc-700 px-3 py-1.5 rounded-lg transition shadow-sm font-bold" id="langToggleMobile">EN</button>
+                    <button class="text-xs bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-700 px-3 py-1.5 rounded-lg transition shadow-sm" data-t="resetBtn" id="resetBtnMobile">リセット</button>
+                </div>
+            </div>
+
+            <!-- 盤面コンテナ -->
+            <div class="relative w-full max-w-[600px]">
+                
+                <!-- 座標入力フォーム -->
+                <div class="mb-6 flex gap-3 w-full">
+                    <div class="relative flex-1">
+                        <input class="w-full pl-4 pr-4 py-3 rounded-xl border border-zinc-300 shadow-sm uppercase focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:border-transparent text-zinc-800 font-mono tracking-wider transition" id="coordInput" placeholder="H8" type="text" />
+                        <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none text-zinc-400 text-xs">
+                            COORD
+                        </div>
+                    </div>
+                    <button class="bg-zinc-900 hover:bg-zinc-800 text-white px-6 py-3 rounded-xl font-bold shadow-md transition transform active:scale-95 flex items-center gap-2 whitespace-nowrap" id="submitCoordBtn">
+                        <span data-t="placeStoneBtn">着手</span>
+                        <svg fill="none" height="16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewbox="0 0 24 24" width="16" xmlns="http://www.w3.org/2000/svg"><line x1="5" x2="19" y1="12" y2="12"><polyline points="12 5 19 12 12 19"></polyline></line></svg>
+                    </button>
+                </div>
+
+                <!-- 盤面ラッパー -->
+                <div class="relative bg-white p-1 md:p-2 rounded-xl shadow-2xl border border-zinc-200">
+                    <!-- 座標ラベル (上) -->
+                    <div class="flex pl-4 md:pl-6 mb-1 text-[10px] md:text-xs font-mono text-zinc-400 select-none">
+                        <div class="flex w-full justify-around font-medium" id="colLabels"></div>
+                    </div>
+                    
+                    <div class="flex">
+                        <!-- 座標ラベル (左) -->
+                        <div class="flex flex-col justify-around mr-1 text-[10px] md:text-xs font-mono text-zinc-400 w-3 md:w-5 text-right select-none h-auto aspect-square font-medium" id="rowLabels"></div>
+                        
+                        <!-- 碁盤 -->
+                        <div class="board-bg grid-15 w-full aspect-square rounded-sm relative cursor-pointer ring-1 ring-zinc-900/5" id="board">
+                            <!-- セルはJSで生成 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- プロンプトセクション（ここへ移動） -->
+                <div class="mt-6 w-full">
+                    <h2 class="font-bold text-zinc-700 mb-2 flex items-center gap-2 text-sm">
+                        <svg fill="none" height="16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewbox="0 0 24 24" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        <span data-t="promptTitle">AI Prompt</span>
+                    </h2>
+                    <div class="relative group">
+                        <textarea class="w-full h-24 p-3 text-[10px] leading-relaxed font-mono border border-zinc-200 rounded-xl bg-zinc-50 text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-400 resize-none transition" id="aiPrompt" readonly=""></textarea>
+                        <button class="absolute bottom-2 right-2 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-600 p-1.5 rounded-lg transition shadow-sm" id="copyBtn" title="Copy to Clipboard">
+                            <svg fill="none" height="16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewbox="0 0 24 24" width="16" xmlns="http://www.w3.org/2000/svg"><rect height="14" rx="2" ry="2" width="14" x="8" y="8"><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></rect></svg>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- CPU思考中オーバーレイ -->
+            <div class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 bg-zinc-900/90 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 backdrop-blur-sm" id="cpuThinking">
+                <div class="flex gap-1">
+                    <div class="thinking-dot"></div>
+                    <div class="thinking-dot"></div>
+                    <div class="thinking-dot"></div>
+                </div>
+                <span class="font-bold text-sm tracking-wide" data-t="cpuThinking">CPU THINKING</span>
+            </div>
+
+            <!-- 勝利メッセージ -->
+            <div class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white/95 backdrop-blur-md p-8 rounded-3xl shadow-2xl border border-zinc-200 text-center z-30 w-72 md:w-80" id="winMessage">
+                <div class="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg fill="none" height="32" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewbox="0 0 24 24" width="32" xmlns="http://www.w3.org/2000/svg"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"><path d="M4 22h16"><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></path></path></path></path></path></svg>
+                </div>
+                <h2 class="text-2xl font-bold mb-2 text-zinc-900 tracking-tight" data-t="gameSet">GAME SET</h2>
+                <p class="text-lg font-bold text-zinc-600 mb-8" id="winnerText"></p>
+                <button class="w-full bg-zinc-900 text-white py-3 rounded-xl hover:bg-zinc-800 font-bold transition shadow-lg transform active:scale-95" data-t="rematchBtn" id="rematchBtn">もう一度対戦</button>
+            </div>
+        </main>
+
+        <!-- サイドバー：操作パネル -->
+        <aside class="w-full md:w-96 bg-white border-t md:border-t-0 md:border-l border-zinc-200 flex flex-col z-10">
+            
+            <!-- ヘッダー (PC用) -->
+            <div class="hidden md:flex p-6 border-b border-zinc-100 justify-between items-center bg-white">
+                <div>
+                    <h1 class="text-xl font-bold text-zinc-900 tracking-tight" data-t="appTitle">Gomoku AI</h1>
+                    <p class="text-xs text-zinc-400 font-medium tracking-wide" data-t="subTitle">STRATEGY BOARD GAME</p>
+                </div>
+                <button class="text-xs bg-white border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-300 text-zinc-600 px-4 py-2 rounded-lg transition font-medium" data-t="resetBtn" id="resetBtn">リセット</button>
+            </div>
+
+            <!-- 手番表示 -->
+            <div class="p-6 pb-2">
+                <div class="w-full p-4 rounded-xl bg-zinc-900 text-white shadow-lg flex items-center justify-between transition-all duration-300" id="turnIndicator">
+                    <div class="flex items-center gap-3">
+                        <div class="w-4 h-4 rounded-full bg-zinc-900 border-2 border-white/80 shadow-sm" id="turnIcon"></div>
+                        <span class="text-xs font-medium opacity-70 tracking-wider" data-t="turnLabel">TURN</span>
+                    </div>
+                    <span class="text-lg font-bold tracking-widest" id="turnText">BLACK</span>
+                </div>
+            </div>
+            
+            <!-- 設定と履歴のタブエリア -->
+            <div class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+                
+                <!-- CPU設定 -->
+                <div class="bg-zinc-50 rounded-2xl p-5 border border-zinc-100">
+                    <h2 class="font-bold text-zinc-700 mb-4 flex items-center gap-2 text-sm">
+                        <svg class="text-zinc-500" fill="none" height="18" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewbox="0 0 24 24" width="18" xmlns="http://www.w3.org/2000/svg"><path d="M12 2a10 10 0 1 0 10 10H12V2z"><path d="M12 12 2.1 12a10.1 10.1 0 0 0 9.9 9.9 10 10 0 0 0 10-10"></path></path></svg>
+                        <span data-t="settingsTitle">Game Settings</span>
+                    </h2>
+                    
+                    <div class="flex flex-col gap-4">
+                        <label class="relative flex items-center justify-between cursor-pointer group">
+                            <span class="text-sm font-bold text-zinc-700 group-hover:text-zinc-900 transition" data-t="vsCpuLabel">VS CPU Mode</span>
+                            <input class="sr-only peer" id="cpuModeToggle" type="checkbox" />
+                            <div class="relative w-11 h-6 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-zinc-900"></div>
+                        </label>
+
+                        <div class="opacity-50 pointer-events-none transition-all duration-300 flex flex-col gap-4 pl-2 border-l-2 border-zinc-200" id="cpuSettings">
+                            <!-- 難易度 -->
+                            <div>
+                                <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider" data-t="difficultyLabel">Difficulty</label>
+                                <div class="relative">
+                                    <select class="w-full appearance-none bg-white border border-zinc-200 text-zinc-700 text-sm rounded-lg focus:ring-zinc-500 focus:border-zinc-500 block p-2.5 font-medium" id="cpuLevel">
+                                        <option data-t="level1Option" value="1">LEVEL 1 (Easy)</option>
+                                        <option data-t="level2Option" selected="" value="2">LEVEL 2 (Normal)</option>
+                                        <option data-t="level3Option" value="3">LEVEL 3 (Hard)</option>
+                                    </select>
+                                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-zinc-500">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 手番選択 -->
+                            <div>
+                                <label class="block text-xs font-bold text-zinc-400 mb-1.5 uppercase tracking-wider" data-t="cpuTurnLabel">CPU Turn</label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <label class="cursor-pointer">
+                                        <input checked="" class="peer sr-only" name="cpuTurn" type="radio" value="2" />
+                                        <div class="text-center text-sm py-2 rounded-lg border border-zinc-200 text-zinc-600 bg-white peer-checked:bg-zinc-800 peer-checked:text-white peer-checked:border-zinc-800 transition" data-t="roleWhite">
+                                            後手 (White)
+                                        </div>
+                                    </label>
+                                    <label class="cursor-pointer">
+                                        <input class="peer sr-only" name="cpuTurn" type="radio" value="1" />
+                                        <div class="text-center text-sm py-2 rounded-lg border border-zinc-200 text-zinc-600 bg-white peer-checked:bg-zinc-800 peer-checked:text-white peer-checked:border-zinc-800 transition" data-t="roleBlack">
+                                            先手 (Black)
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- 対局開始ボタン (CPU先手時などに使用) -->
+                            <button class="hidden w-full bg-zinc-800 hover:bg-zinc-700 text-white py-2 rounded-lg font-bold text-sm transition shadow-sm mt-2 flex items-center justify-center gap-2" id="cpuStartBtn">
+                                <svg fill="none" height="16" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewbox="0 0 24 24" width="16" xmlns="http://www.w3.org/2000/svg"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                <span data-t="startBtn">対局開始</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 棋譜 -->
+                <div>
+                    <h3 class="font-bold text-zinc-700 mb-3 text-sm flex items-center justify-between">
+                        <span data-t="historyTitle">History</span>
+                        <span class="text-xs bg-zinc-100 text-zinc-500 px-2 py-0.5 rounded-full" id="moveCount">0 moves</span>
+                    </h3>
+                    <div class="h-40 overflow-y-auto border border-zinc-100 rounded-xl bg-white p-1 text-sm font-mono shadow-inner scroll-smooth" id="moveHistory">
+                        <!-- 履歴 -->
+                    </div>
+                </div>
+
+                <!-- プロンプトセクションはここから削除されました -->
+
+            </div>
+        </aside>
+
+        <!-- カスタムモーダル -->
+        <div class="hidden absolute inset-0 bg-zinc-900/40 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 transition-opacity duration-200" id="customModal">
+            <div class="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full mx-4 transform scale-95 transition-transform duration-200 border border-zinc-100">
+                <h3 class="text-lg font-bold mb-2 text-zinc-900" data-t="modalConfirmTitle" id="modalTitle">確認</h3>
+                <p class="text-zinc-600 mb-6 text-sm leading-relaxed" id="modalMessage">メッセージ</p>
+                <div class="flex justify-end gap-3">
+                    <button class="px-4 py-2 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-800 rounded-lg font-medium transition text-sm" data-t="modalCancel" id="modalCancelBtn">キャンセル</button>
+                    <button class="px-5 py-2 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 font-bold shadow-md transition transform active:scale-95 text-sm" data-t="modalOk" id="modalOkBtn">OK</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+{
+    // グローバル汚染を防ぐためにブロックで囲む
+    const BOARD_SIZE = 15;
+    const COL_LABELS = "ABCDEFGHIJKLMNO".split('');
+    
+    // 言語設定
+    let currentLang = 'ja'; // 'ja' or 'en'
+    
+    // 翻訳辞書
+    const translations = {
+        ja: {
+            appTitle: "AI五目並べ",
+            subTitle: "STRATEGY BOARD GAME",
+            aboutTitle: "このツールについて",
+            aboutDesc: "AIへのプロンプト生成機能と <strong>CPU対戦機能</strong>を搭載したWebアプリです<br>デザインを一新し より対局に集中できるモダンなインターフェースになりました",
+            levelEasyTag: "初級: 気まぐれ",
+            levelNormalTag: "中級: リーチ阻止",
+            levelHardTag: "上級: 攻防バランス",
+            resetBtn: "リセット",
+            startBtn: "対局開始",
+            placeStoneBtn: "石を置く",
+            cpuThinking: "CPU思考中",
+            gameSet: "勝負あり！",
+            rematchBtn: "もう一度対戦",
+            turnLabel: "手番",
+            turnBlack: "黒の番",
+            turnWhite: "白の番",
+            settingsTitle: "対戦設定",
+            vsCpuLabel: "VS CPUモード",
+            difficultyLabel: "CPUの強さ",
+            level1Option: "レベル 1 (初級)",
+            level2Option: "レベル 2 (中級)",
+            level3Option: "レベル 3 (上級)",
+            cpuTurnLabel: "CPUの手番",
+            roleWhite: "後手 (白)",
+            roleBlack: "先手 (黒)",
+            historyTitle: "棋譜",
+            promptTitle: "AIへのプロンプト",
+            modalConfirmTitle: "確認",
+            modalErrorTitle: "エラー",
+            modalCancel: "キャンセル",
+            modalOk: "実行",
+            modalOkAlert: "OK",
+            msgResetConfirm: "盤面をリセットしますか\n設定変更も適用されます",
+            msgStartConfirm: "この設定で対局を開始しますか\n現在の盤面はリセットされます",
+            msgCoordError: "そこには既に石があります",
+            msgCoordRangeError: "座標が範囲外です",
+            msgFormatError: "座標の形式が正しくありません (例: H8)",
+            winSuffix: "の勝ちです",
+            blackName: "黒 (Black)",
+            whiteName: "白 (White)"
+        },
+        en: {
+            appTitle: "Gomoku AI",
+            subTitle: "STRATEGY BOARD GAME",
+            aboutTitle: "About This Tool",
+            aboutDesc: "A web app featuring <strong>CPU Battle Mode</strong> and AI Prompt Generation.<br>Redesigned with a modern interface to help you focus on the game.",
+            levelEasyTag: "Easy: Random",
+            levelNormalTag: "Normal: Defensive",
+            levelHardTag: "Hard: Balanced",
+            resetBtn: "Reset",
+            startBtn: "Start Game",
+            placeStoneBtn: "Place",
+            cpuThinking: "CPU THINKING",
+            gameSet: "GAME SET",
+            rematchBtn: "Play Again",
+            turnLabel: "TURN",
+            turnBlack: "BLACK",
+            turnWhite: "WHITE",
+            settingsTitle: "Game Settings",
+            vsCpuLabel: "VS CPU Mode",
+            difficultyLabel: "Difficulty",
+            level1Option: "LEVEL 1 (Easy)",
+            level2Option: "LEVEL 2 (Normal)",
+            level3Option: "LEVEL 3 (Hard)",
+            cpuTurnLabel: "CPU Turn",
+            roleWhite: "White (2nd)",
+            roleBlack: "Black (1st)",
+            historyTitle: "History",
+            promptTitle: "AI Prompt",
+            modalConfirmTitle: "Confirm",
+            modalErrorTitle: "Error",
+            modalCancel: "Cancel",
+            modalOk: "Execute",
+            modalOkAlert: "OK",
+            msgResetConfirm: "Are you sure you want to reset the board?\nSettings will be applied.",
+            msgStartConfirm: "Start game with these settings?\n(Current board will be reset)",
+            msgCoordError: "There is already a stone there!",
+            msgCoordRangeError: "Coordinates out of bounds.",
+            msgFormatError: "Invalid coordinate format (e.g. H8)",
+            winSuffix: " WINS!",
+            blackName: "BLACK",
+            whiteName: "WHITE"
+        }
+    };
+
+    // 初期化時にゼロ埋めされた盤面配列を作成
+    let board = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0)); 
+    let currentPlayer = 1; 
+    let moves = [];
+    let isGameOver = false;
+
+    // CPU設定
+    let isCpuMode = false;
+    let cpuLevel = 2;
+    let cpuPlayer = 2; // デフォルトは白(後手)
+    let isCpuThinking = false;
+
+    // Element取得
+    const boardEl = document.getElementById('board');
+    const colLabelsEl = document.getElementById('colLabels');
+    const rowLabelsEl = document.getElementById('rowLabels');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const turnIcon = document.getElementById('turnIcon');
+    const turnText = document.getElementById('turnText');
+    const historyEl = document.getElementById('moveHistory');
+    const moveCountEl = document.getElementById('moveCount');
+    const promptEl = document.getElementById('aiPrompt');
+    const winMessageEl = document.getElementById('winMessage');
+    const winnerTextEl = document.getElementById('winnerText');
+    const cpuThinkingEl = document.getElementById('cpuThinking');
+    
+    // UI Elements
+    const cpuToggleEl = document.getElementById('cpuModeToggle');
+    const cpuLevelEl = document.getElementById('cpuLevel');
+    const cpuSettingsEl = document.getElementById('cpuSettings');
+    const cpuStartBtn = document.getElementById('cpuStartBtn');
+    
+    // Language Buttons
+    const langJaBtn = document.getElementById('langJaBtn');
+    const langEnBtn = document.getElementById('langEnBtn');
+    const langToggleMobile = document.getElementById('langToggleMobile');
+
+    // Buttons
+    document.getElementById('resetBtn').onclick = confirmReset;
+    document.getElementById('resetBtnMobile').onclick = confirmReset;
+    document.getElementById('rematchBtn').onclick = confirmReset;
+    document.getElementById('submitCoordBtn').onclick = submitCoord;
+    document.getElementById('copyBtn').onclick = copyPrompt;
+    document.getElementById('cpuStartBtn').onclick = confirmStart;
+    
+    // Radio buttons for Turn
+    const turnRadios = document.querySelectorAll('input[name="cpuTurn"]');
+    turnRadios.forEach(radio => {
+        radio.addEventListener('change', updateStartBtnState);
+    });
+
+    // Language Handlers
+    function setLanguage(lang) {
+        currentLang = lang;
+        
+        // Update Buttons Style
+        if (lang === 'ja') {
+            // JA Active
+            langJaBtn.classList.add('text-zinc-900', 'font-bold', 'bg-zinc-100');
+            langJaBtn.classList.remove('text-zinc-400', 'font-medium');
+            
+            // EN Inactive
+            langEnBtn.classList.add('text-zinc-400', 'font-medium');
+            langEnBtn.classList.remove('text-zinc-900', 'font-bold', 'bg-zinc-100');
+            
+            langToggleMobile.textContent = "EN";
+        } else {
+            // EN Active
+            langEnBtn.classList.add('text-zinc-900', 'font-bold', 'bg-zinc-100');
+            langEnBtn.classList.remove('text-zinc-400', 'font-medium');
+            
+            // JA Inactive
+            langJaBtn.classList.add('text-zinc-400', 'font-medium');
+            langJaBtn.classList.remove('text-zinc-900', 'font-bold', 'bg-zinc-100');
+            
+            langToggleMobile.textContent = "JA";
+        }
+
+        // Apply translations
+        const t = translations[lang];
+        document.querySelectorAll('[data-t]').forEach(el => {
+            const key = el.getAttribute('data-t');
+            if (t[key]) {
+                el.innerHTML = t[key];
+            }
+        });
+
+        updateUI(); 
+        generatePrompt(); 
+    }
+
+    langJaBtn.onclick = () => setLanguage('ja');
+    langEnBtn.onclick = () => setLanguage('en');
+    langToggleMobile.onclick = () => {
+        setLanguage(currentLang === 'ja' ? 'en' : 'ja');
+    };
+    
+    // CPU UI Handlers
+    cpuToggleEl.addEventListener('change', (e) => {
+        isCpuMode = e.target.checked;
+        if (isCpuMode) {
+            cpuSettingsEl.classList.remove('opacity-50', 'pointer-events-none');
+            updateStartBtnState();
+        } else {
+            cpuSettingsEl.classList.add('opacity-50', 'pointer-events-none');
+            // CPUオフ時は開始ボタンを隠す
+            cpuStartBtn.classList.add('hidden');
+        }
+    });
+    
+    // CPUが先手の場合のみ「対局開始」ボタンを表示するロジック
+    function updateStartBtnState() {
+        if (!isCpuMode) {
+            cpuStartBtn.classList.add('hidden');
+            return;
+        }
+        
+        const turnVal = document.querySelector('input[name="cpuTurn"]:checked').value;
+        const selectedCpuPlayer = parseInt(turnVal);
+
+        // CPUが先手(1=Black)の場合はトリガーが必要なのでボタンを表示
+        // CPUが後手(2=White)の場合も、設定変更を確定する意味で表示しても良いが
+        // 今回は「CPUが先手の場合は」という要望に合わせて特に先手時に強調（もしくは常時表示でOK）
+        // UX的には設定変更時は常に「開始」ボタンが押せる方が分かりやすいので常時表示にします
+        cpuStartBtn.classList.remove('hidden');
+    }
+    
+    // Modal Elements
+    const modalEl = document.getElementById('customModal');
+    const modalTitleEl = document.getElementById('modalTitle');
+    const modalMessageEl = document.getElementById('modalMessage');
+    const modalOkBtn = document.getElementById('modalOkBtn');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+
+    function initGame() {
+        // 盤面リセット
+        for(let r=0; r<BOARD_SIZE; r++) {
+            for(let c=0; c<BOARD_SIZE; c++) {
+                board[r][c] = 0;
+            }
+        }
+
+        currentPlayer = 1;
+        moves = [];
+        isGameOver = false;
+        isCpuThinking = false;
+        winMessageEl.classList.add('hidden');
+        cpuThinkingEl.classList.add('hidden');
+        
+        // 設定を反映
+        isCpuMode = cpuToggleEl.checked;
+        cpuLevel = parseInt(cpuLevelEl.value);
+        
+        // CPUの手番設定を取得
+        const turnVal = document.querySelector('input[name="cpuTurn"]:checked').value;
+        cpuPlayer = parseInt(turnVal);
+
+        closeModal();
+        
+        renderGrid();
+        updateUI();
+        generatePrompt();
+
+        // CPUが先手(黒)でCPUモードの場合、初手を打つ
+        if (isCpuMode && currentPlayer === cpuPlayer) {
+            triggerCpuMove();
+        }
+    }
+
+    function renderGrid() {
+        boardEl.innerHTML = '';
+        colLabelsEl.innerHTML = '';
+        rowLabelsEl.innerHTML = '';
+
+        // Labels
+        COL_LABELS.forEach(label => {
+            const div = document.createElement('div');
+            div.textContent = label;
+            div.className = 'flex-1 text-center flex items-end justify-center pb-1 text-zinc-500';
+            colLabelsEl.appendChild(div);
+        });
+        for (let i = 1; i <= BOARD_SIZE; i++) {
+            const div = document.createElement('div');
+            div.textContent = i;
+            div.className = 'flex-1 flex items-center justify-end pr-1 text-zinc-500';
+            rowLabelsEl.appendChild(div);
+        }
+
+        // Cells
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell w-full h-full flex items-center justify-center relative z-10';
+                cell.dataset.r = r;
+                cell.dataset.c = c;
+                
+                // 星
+                if (
+                    (r === 3 && c === 3) || (r === 3 && c === 11) ||
+                    (r === 7 && c === 7) ||
+                    (r === 11 && c === 3) || (r === 11 && c === 11)
+                ) {
+                    const star = document.createElement('div');
+                    star.className = 'star-point w-full h-full absolute pointer-events-none';
+                    cell.appendChild(star);
+                }
+
+                cell.addEventListener('click', () => handleCellClick(r, c));
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    function handleCellClick(r, c) {
+        if (isGameOver || board[r][c] !== 0 || isCpuThinking) return;
+        
+        // 自分の手番でなければ無視（CPU思考中など）
+        if (isCpuMode && currentPlayer === cpuPlayer) return;
+
+        // 人間の手
+        makeMove(r, c);
+
+        // CPUモードならCPUの手番へ
+        if (!isGameOver && isCpuMode && currentPlayer === cpuPlayer) {
+            triggerCpuMove();
+        }
+    }
+
+    function triggerCpuMove() {
+        isCpuThinking = true;
+        cpuThinkingEl.classList.remove('hidden');
+        
+        // 少し遅延させて「考え中」っぽくする
+        setTimeout(() => {
+            const move = calculateBestMove();
+            if (move) {
+                makeMove(move.r, move.c);
+            }
+            isCpuThinking = false;
+            cpuThinkingEl.classList.add('hidden');
+        }, 600);
+    }
+
+    // ==========================================
+    // CPU Logic (Simple Heuristic)
+    // ==========================================
+    function calculateBestMove() {
+        if (moves.length === 0) {
+            return {r: 7, c: 7};
+        }
+
+        let candidates = [];
+        
+        for(let r=0; r<BOARD_SIZE; r++) {
+            for(let c=0; c<BOARD_SIZE; c++) {
+                if(board[r][c] === 0) {
+                    if (hasNeighbor(r, c, 2)) {
+                        const score = evaluatePosition(r, c, cpuPlayer, cpuLevel);
+                        candidates.push({r, c, score});
+                    }
+                }
+            }
+        }
+
+        candidates.sort((a, b) => b.score - a.score);
+
+        if (candidates.length === 0) return null;
+
+        if (cpuLevel === 1) {
+            const range = Math.max(1, Math.floor(candidates.length * 0.2));
+            const idx = Math.floor(Math.random() * range);
+            return candidates[idx];
+        } else if (cpuLevel === 2) {
+            if (candidates[0].score >= 10000) return candidates[0];
+            const idx = Math.random() < 0.8 ? 0 : Math.floor(Math.random() * Math.min(3, candidates.length));
+            return candidates[idx];
+        } else {
+            return candidates[0];
+        }
+    }
+
+    function hasNeighbor(r, c, dist) {
+        for(let dr = -dist; dr <= dist; dr++) {
+            for(let dc = -dist; dc <= dist; dc++) {
+                if (dr===0 && dc===0) continue;
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                    if (board[nr][nc] !== 0) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function evaluatePosition(r, c, player, level) {
+        const opponent = player === 1 ? 2 : 1;
+        let attackScore = evaluateLines(r, c, player);
+        let defenseScore = evaluateLines(r, c, opponent);
+        
+        if (attackScore >= 100000) return 200000;
+        if (defenseScore >= 100000) return 150000;
+
+        if (level === 1) {
+            return attackScore + (defenseScore * 0.5) + Math.random() * 10;
+        } else if (level === 2) {
+            return attackScore + defenseScore + Math.random() * 50;
+        } else {
+            return attackScore * 1.1 + defenseScore;
+        }
+    }
+
+    function evaluateLines(r, c, color) {
+        const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+        let totalScore = 0;
+
+        for (let [dr, dc] of directions) {
+            let count = 1;
+            let openEnds = 0;
+            
+            let i = 1;
+            let blocked1 = false;
+            while (true) {
+                const nr = r + dr * i, nc = c + dc * i;
+                if (!isValid(nr, nc)) { blocked1 = true; break; }
+                if (board[nr][nc] === color) {
+                    count++;
+                } else if (board[nr][nc] === 0) {
+                    openEnds++;
+                    break;
+                } else {
+                    blocked1 = true;
+                    break;
+                }
+                i++;
+            }
+
+            let j = 1;
+            let blocked2 = false;
+            while (true) {
+                const nr = r - dr * j, nc = c - dc * j;
+                if (!isValid(nr, nc)) { blocked2 = true; break; }
+                if (board[nr][nc] === color) {
+                    count++;
+                } else if (board[nr][nc] === 0) {
+                    openEnds++;
+                    break;
+                } else {
+                    blocked2 = true;
+                    break;
+                }
+                j++;
+            }
+            
+            if (count >= 5) {
+                totalScore += 100000;
+            } else if (count === 4) {
+                if (openEnds >= 1) totalScore += 10000;
+                if (openEnds === 2) totalScore += 20000;
+            } else if (count === 3) {
+                if (openEnds === 2) totalScore += 5000;
+                if (openEnds === 1) totalScore += 500;
+            } else if (count === 2) {
+                if (openEnds === 2) totalScore += 100;
+            } else if (count === 1) {
+                totalScore += 10;
+            }
+        }
+        return totalScore;
+    }
+
+    function isValid(r, c) {
+        return r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE;
+    }
+
+
+    // ==========================================
+    // UI Functions
+    // ==========================================
+
+    function submitCoord() {
+        if (isGameOver || isCpuThinking) return;
+        if (isCpuMode && currentPlayer === cpuPlayer) return;
+
+        const input = document.getElementById('coordInput');
+        const val = input.value.trim().toUpperCase();
+        const t = translations[currentLang];
+        
+        if (!val) return;
+
+        const match = val.match(/([A-O])([0-9]+)/) || val.match(/([0-9]+)([A-O])/);
+        
+        if (match) {
+            let colStr, rowStr;
+            if (isNaN(match[1])) {
+                colStr = match[1];
+                rowStr = match[2];
+            } else {
+                rowStr = match[1];
+                colStr = match[2];
+            }
+
+            const c = COL_LABELS.indexOf(colStr);
+            const r = parseInt(rowStr) - 1;
+
+            if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+                if (board[r][c] === 0) {
+                    makeMove(r, c);
+                    input.value = '';
+                    
+                    if (!isGameOver && isCpuMode && currentPlayer === cpuPlayer) {
+                        triggerCpuMove();
+                    }
+                } else {
+                    showAlert(t.modalErrorTitle, t.msgCoordError);
+                }
+            } else {
+                showAlert(t.modalErrorTitle, t.msgCoordRangeError);
+            }
+        } else {
+            showAlert(t.modalErrorTitle, t.msgFormatError);
+        }
+    }
+
+    function makeMove(r, c) {
+        board[r][c] = currentPlayer;
+        moves.push({r, c, player: currentPlayer});
+        
+        if (checkWin(r, c, currentPlayer)) {
+            isGameOver = true;
+            endGame(currentPlayer);
+        } else {
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+        }
+
+        renderStones();
+        updateUI();
+        generatePrompt();
+    }
+
+    function renderStones() {
+        const cells = boardEl.querySelectorAll('.grid-cell');
+        cells.forEach(cell => {
+            const existingStone = cell.querySelector('.stone');
+            if (existingStone) existingStone.remove();
+            
+            const r = parseInt(cell.dataset.r);
+            const c = parseInt(cell.dataset.c);
+
+            if (board[r][c] !== 0) {
+                const stone = document.createElement('div');
+                stone.className = `stone ${board[r][c] === 1 ? 'black' : 'white'} relative z-20`;
+                
+                const lastMove = moves[moves.length - 1];
+                if (lastMove && lastMove.r === r && lastMove.c === c) {
+                    stone.classList.add('last-move');
+                }
+
+                cell.appendChild(stone);
+            }
+        });
+    }
+
+    function checkWin(r, c, player) {
+        const directions = [[0, 1], [1, 0], [1, 1], [1, -1]];
+        for (let [dr, dc] of directions) {
+            let count = 1;
+            let i = 1;
+            while (true) {
+                const nr = r + dr * i, nc = c + dc * i;
+                if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE || board[nr][nc] !== player) break;
+                count++; i++;
+            }
+            i = 1;
+            while (true) {
+                const nr = r - dr * i, nc = c - dc * i;
+                if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE || board[nr][nc] !== player) break;
+                count++; i++;
+            }
+            if (count >= 5) return true;
+        }
+        return false;
+    }
+
+    function endGame(winner) {
+        const t = translations[currentLang];
+        const name = winner === 1 ? t.blackName : t.whiteName;
+        winnerTextEl.textContent = `${name} ${t.winSuffix}`;
+        winMessageEl.classList.remove('hidden');
+        
+        generatePrompt(); // プロンプトも勝敗メッセージ付きで更新
+    }
+
+    function updateUI() {
+        const t = translations[currentLang];
+
+        if (currentPlayer === 1) {
+            turnIcon.className = "w-4 h-4 rounded-full bg-black border-2 border-white shadow-sm";
+            turnText.textContent = t.turnBlack;
+            turnIndicator.className = "w-full p-4 rounded-xl bg-zinc-900 text-white shadow-lg flex items-center justify-between transition-all duration-300";
+        } else {
+            turnIcon.className = "w-4 h-4 rounded-full bg-white border-2 border-zinc-300 shadow-sm";
+            turnText.textContent = t.turnWhite;
+            turnIndicator.className = "w-full p-4 rounded-xl bg-white text-zinc-900 border border-zinc-200 shadow-lg flex items-center justify-between transition-all duration-300";
+        }
+
+        historyEl.innerHTML = '';
+        moves.forEach((m, idx) => {
+            const div = document.createElement('div');
+            const playerStr = m.player === 1 ? "B" : "W";
+            const coord = `${COL_LABELS[m.c]}${m.r + 1}`;
+            div.innerHTML = `<span class="inline-block w-6 text-zinc-400 text-right mr-2">${idx + 1}.</span> <span class="font-bold ${m.player === 1 ? 'text-zinc-800' : 'text-zinc-500'}">${playerStr}</span> <span class="text-zinc-600">${coord}</span>`;
+            div.className = "py-1.5 px-2 rounded hover:bg-zinc-50 flex items-center border-b border-dashed border-zinc-100 last:border-0";
+            if (idx === moves.length - 1) div.className += " bg-blue-50/50 border-l-2 border-l-blue-500";
+            historyEl.appendChild(div);
+        });
+        historyEl.scrollTop = historyEl.scrollHeight;
+        moveCountEl.textContent = `${moves.length} moves`;
+    }
+
+    function generatePrompt() {
+        // 多言語対応プロンプト
+        const t = translations[currentLang];
+        const playerStr = currentPlayer === 1 ? t.roleBlack : t.roleWhite;
+        const opponentStr = currentPlayer === 1 ? (currentLang === 'ja' ? '白' : 'White') : (currentLang === 'ja' ? '黒' : 'Black');
+        const lastMove = moves.length > 0 ? moves[moves.length - 1] : null;
+        
+        let text = "";
+        
+        if (currentLang === 'ja') {
+            // 日本語プロンプト
+            if (isGameOver) {
+                const winner = currentPlayer === 1 ? 2 : 1; // 直前の手番プレイヤーが勝者
+                const name = winner === 1 ? "黒" : "白";
+                const lastMoveCoord = lastMove ? `${COL_LABELS[lastMove.c]}${lastMove.r + 1}` : "";
+                text = `ゲーム終了！\n${name}が${lastMoveCoord}に置いて勝利しました。\nお疲れ様でした。感想戦を行いましょう。`;
+            } else {
+                text = `五目並べ（15x15盤）の対戦中です。\nあなたは「${playerStr}」です。\n`;
+                if (lastMove) {
+                    const coord = `${COL_LABELS[lastMove.c]}${lastMove.r + 1}`;
+                    text += `直前に相手（${opponentStr}）は「${coord}」に打ちました。\n`;
+                } else {
+                    text += `ゲーム開始です。あなたが先手です。\n`;
+                }
+                text += `\n現在の盤面状況:\n` + generateAsciiBoard();
+                text += `\n【履歴】\n`;
+                text += getHistoryText();
+                text += `\n\nあなたの番です。勝利のために最適な手を考え、座標（例: H8）だけで答えてください。`;
+                text += `\n※ 座標は横軸アルファベット(A-O)、縦軸数字(1-15)です。`;
+            }
+        } else {
+            // 英語プロンプト
+             if (isGameOver) {
+                const winner = currentPlayer === 1 ? 2 : 1; 
+                const name = winner === 1 ? "Black" : "White";
+                const lastMoveCoord = lastMove ? `${COL_LABELS[lastMove.c]}${lastMove.r + 1}` : "";
+                text = `Game Over!\n${name} won by playing at ${lastMoveCoord}.\nGood game! Let's review the match.`;
+            } else {
+                text = `We are playing Gomoku (15x15 board).\nYou are "${playerStr}".\n`;
+                if (lastMove) {
+                    const coord = `${COL_LABELS[lastMove.c]}${lastMove.r + 1}`;
+                    text += `The opponent (${opponentStr}) just played at "${coord}".\n`;
+                } else {
+                    text += `Game Start. You are the first player (Black).\n`;
+                }
+                text += `\nCurrent Board:\n` + generateAsciiBoard();
+                text += `\n[History]\n`;
+                text += getHistoryText();
+                text += `\n\nIt's your turn. Think of the best move to win and reply with ONLY the coordinates (e.g., H8).`;
+                text += `\n* Coordinates: Horizontal (A-O), Vertical (1-15).`;
+            }
+        }
+        
+        promptEl.value = text;
+    }
+    
+    function getHistoryText() {
+        let text = "";
+        const historyLimit = 10;
+        const startIdx = Math.max(0, moves.length - historyLimit);
+        if (startIdx > 0) text += `... (Previous ${startIdx} moves omitted)\n`;
+        for(let i=startIdx; i<moves.length; i++) {
+            const m = moves[i];
+            text += `${i+1}: ${m.player===1?"B":"W"}(${COL_LABELS[m.c]}${m.r+1}) `;
+        }
+        return text;
+    }
+
+    function generateAsciiBoard() {
+        // 安全対策: boardが正しくない場合は空文字を返す
+        if (!board || board.length === 0 || !board[0]) return "";
+
+        let ascii = "   A B C D E F G H I J K L M N O\n";
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            let rowStr = (r + 1).toString().padStart(2, ' ') + " ";
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                if (board[r][c] === 0) rowStr += ". ";
+                else if (board[r][c] === 1) rowStr += "X ";
+                else rowStr += "O ";
+            }
+            ascii += rowStr + "\n";
+        }
+        return ascii;
+    }
+
+    function copyPrompt() {
+        const copyText = document.getElementById("aiPrompt");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        document.execCommand("copy");
+        
+        const btn = document.getElementById("copyBtn");
+        const originalContent = btn.innerHTML;
+        
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-600"><polyline points="20 6 9 17 4 12"/></svg>`;
+        btn.classList.add("bg-green-50", "border-green-200");
+        
+        setTimeout(() => {
+            btn.innerHTML = originalContent;
+            btn.classList.remove("bg-green-50", "border-green-200");
+        }, 1500);
+    }
+
+    function showModal(title, message, onConfirm, isAlert = false) {
+        const t = translations[currentLang];
+        modalTitleEl.textContent = title;
+        modalMessageEl.textContent = message;
+        
+        if (isAlert) {
+            modalCancelBtn.classList.add('hidden');
+            modalOkBtn.textContent = t.modalOkAlert;
+            modalOkBtn.onclick = closeModal;
+        } else {
+            modalCancelBtn.classList.remove('hidden');
+            modalCancelBtn.textContent = t.modalCancel;
+            modalOkBtn.textContent = t.modalOk;
+            modalOkBtn.onclick = () => {
+                if (onConfirm) onConfirm();
+            };
+        }
+        modalEl.classList.remove('hidden');
+        setTimeout(() => {
+            modalEl.classList.remove('opacity-0');
+            modalEl.querySelector('div').classList.remove('scale-95');
+            modalEl.querySelector('div').classList.add('scale-100');
+        }, 10);
+    }
+
+    function closeModal() {
+        modalEl.classList.add('opacity-0');
+        modalEl.querySelector('div').classList.remove('scale-100');
+        modalEl.querySelector('div').classList.add('scale-95');
+        setTimeout(() => {
+            modalEl.classList.add('hidden');
+        }, 200);
+    }
+
+    function showAlert(title, message) {
+        showModal(title, message, null, true);
+    }
+
+    function confirmReset() {
+        const t = translations[currentLang];
+        showModal(t.modalConfirmTitle, t.msgResetConfirm, initGame, false);
+    }
+    
+    function confirmStart() {
+        const t = translations[currentLang];
+        // 既に手が打たれている場合のみ確認を出す
+        if (moves.length > 0) {
+            showModal(t.modalConfirmTitle, t.msgStartConfirm, initGame, false);
+        } else {
+            initGame();
+        }
+    }
+
+    // Initialize with default language
+    setLanguage('ja');
+    initGame();
+}
+</script>
+</body>
+</html>
